@@ -1,7 +1,7 @@
 '''
 Author: your name
 Date: 2022-02-12 11:12:24
-LastEditTime: 2022-02-12 16:33:52
+LastEditTime: 2022-02-13 23:22:37
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /CRUSE/loss_func/loss.py
@@ -17,6 +17,7 @@ class loss_func():
 
 def l2_norm(s1, s2):
     norm = torch.sum(s1 * s2, -1, keepdim=True)
+    return norm
 
 
 def remove_dc(data):
@@ -48,13 +49,14 @@ def rmse(ref, est, eps=1e-8):
         )
 
     B, C, T, F = torch.size(ref)
-    real_ref = ref[:, 0, :, :]
-    imag_ref = ref[:, 1, :, :]
+    # real_ref = ref[:, 0, :, :]
+    # imag_ref = ref[:, 1, :, :]
 
-    real_est = est[:, 0, :, :]
-    imag_est = est[:, 1, :, :]
+    # real_est = est[:, 0, :, :]
+    # imag_est = est[:, 1, :, :]
     err = est - ref
-    mse = torch.sum(err**2)
+    mse = torch.sum(torch.sqrt(err**2)) / (B * T * F)
+    return mse
 
 
 def c_rmse(ref, est, unproc=None, eps=1e-8):
@@ -76,8 +78,18 @@ def c_rmse(ref, est, unproc=None, eps=1e-8):
 
     mag_est = torch.sqrt(real_est**2 + imag_est**2)
     phase_est = torch.atan2(imag_est, real_est)
+    tmp1 = torch.pow(mag_est, c)
+    tmp2 = torch.pow(mag_ref, c)
+    tmp3 = tmp1 * torch.cos(phase_ref) + tmp1 * torch.sin(phase_ref) * 1j
+
+    tmp4 = tmp2 * torch.cos(phase_est) + tmp1 * torch.sin(phase_est) * 1j
+    tmp5 = tmp3 - tmp4
+    tmp5 = torch.abs(tmp5)
 
     loss1 = (torch.pow(mag_ref, c) - torch.pow(mag_est, c))**2
+    loss2 = tmp5**2
+    loss = (1 - beta) * torch.sum(loss1) + beta * torch.sum(loss2)
+    return loss
 
 
 def wo_male(ref, est, unproc, eps=1e-8):
