@@ -1,7 +1,7 @@
 '''
 Author: your name
 Date: 2022-02-13 19:35:14
-LastEditTime: 2022-02-13 23:22:02
+LastEditTime: 2022-02-13 23:28:52
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /CRUSE/model/cruse_net.py
@@ -114,5 +114,21 @@ class unet1(nn.Modules):
 
     def forward(self, x):
         out = x
-        e1 = self.elu
-        pass
+        e1 = self.elu(self.bn1(self.conv1(out)))
+        e2 = self.elu(self.bn2(self.conv2(e1)))
+        e3 = self.elu(self.bn3(self.conv3(e2)))
+
+        out = e3
+        out = self.gru(out)
+        out1 = self.elu(self.bn2_t_1(self.conv2_t_1(out)))
+        out1 = self.elu(self.bn1_t_1(self.conv2_t_1(out1)))
+        out1 = self.fc(out1)
+
+        return out
+
+
+if __name__ == "__main__":
+    x = torch.randn((2, 1, 10, 161))
+    net = unet1()
+    y = net(x)
+    print(f"{x.shape}->{y.shape}")
