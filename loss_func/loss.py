@@ -1,7 +1,7 @@
 '''
 Author: your name
 Date: 2022-02-12 11:12:24
-LastEditTime: 2022-02-13 23:22:37
+LastEditTime: 2022-02-14 23:26:13
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /CRUSE/loss_func/loss.py
@@ -10,9 +10,25 @@ import torch
 import numpy as np
 
 
-class loss_func():
-    def __init__(self) -> None:
-        pass
+class loss_func:
+    def __init__(self, loss_mode) -> None:
+        assert loss_mode in [
+            'SI-SNR', 'SS-SNR', 'MSE', 'Normal_MSE', 'CN_MSE', 'D_MSE',
+            'WO_MALE', 'C_MSE'
+        ], "Loss mode must be one of ***"
+        self.loss_mode = loss_mode
+
+    def loss(self, inputs, labels, noisy=None):
+        if self.loss_mode == 'SI-SNR':
+            return -(sisnr(inputs, labels))
+        elif self.loss_mode == 'SS-SNR':
+            return 0
+        elif self.loss_mode == 'WO_MALE':
+            return wo_male(labels, inputs, noisy)
+        elif self.loss_mode == 'C_MSE':
+            return c_rmse(labels, inputs)
+        elif self.loss_mode == 'MSE':
+            return rmse(labels, inputs)
 
 
 def l2_norm(s1, s2):
@@ -57,6 +73,13 @@ def rmse(ref, est, eps=1e-8):
     err = est - ref
     mse = torch.sum(torch.sqrt(err**2)) / (B * T * F)
     return mse
+
+
+def cn_rmse(ref, est, unproc=None, eps=1e-8):
+    if ref.shape != est.shape:
+        raise RuntimeError(
+            f"Dimension mismatch when calculate c_mse, {ref.shape} vs {est.shape}"
+        )
 
 
 def c_rmse(ref, est, unproc=None, eps=1e-8):
