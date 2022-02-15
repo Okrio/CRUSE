@@ -1,14 +1,16 @@
 '''
 Author: your name
 Date: 2022-02-12 16:16:12
-LastEditTime: 2022-02-16 00:13:34
+LastEditTime: 2022-02-16 00:33:57
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /CRUSE/utils/utils.py
 '''
 
-from ntpath import join
+# from ntpath import join
+from grpc import ssl_server_certificate_configuration
 import numpy as np
+# from scipy.fft import fft
 import torch
 # import matplotlib.pyplot as plt
 import os
@@ -208,3 +210,93 @@ def postfiltering(indata, mask, tao=0.02):
     iam_pf = (1 + tao) * mask / (1 + tao * mask**2 / (iam_sin**2))
 
     return indata * iam_pf
+
+
+class PreProcess:
+    def __init__(self,
+                 win_len,
+                 win_inc,
+                 fft_len,
+                 win_type,
+                 post_process_mode,
+                 loss_mode,
+                 use_cuda=False):
+        self.win_len = win_len
+        self.win_inc = win_inc
+        self.fft_len = fft_len
+        self.win_type = win_type
+        self.post_process_mode = post_process_mode
+        self.loss_mode = loss_mode
+        self.use_cuda = use_cuda
+
+        if win_type == "hanning":
+            self.window = torch.hann_window(self.fft_len)
+        else:
+            raise ValueError("ERROR window type")
+        if use_cuda:
+            self.window = self.window.cuda()
+
+    def pre_stft(self, inputs):
+        stft_inputs = torch.stft(inputs,
+                                 n_fft=self.fft_len,
+                                 hop_length=self.win_inc,
+                                 win_length=self.win_len,
+                                 window=self.window,
+                                 center=True,
+                                 pad_mode="constant")
+        stft_inputs = stft_inputs.transpose(1, 3).contiguous()
+        real = stft_inputs[:, 0, :, :]
+        imag = stft_inputs[:, 1, :, :]
+        spec_mags = torch.sqrt(real**2 + imag**2 + 1e-8)
+        spec_phase = torch.atan2(imag, real)
+
+        real = torch.unsqueeze(real, dim=1)
+        imag = torch.unsqueeze(imag, dim=1)
+        spec_mags = torch.unsqueeze(spec_mags, dim=1)
+        spec_phase = torch.unsqueeze(spec_phase, dim=1)
+
+        self.real = real
+        self.imag = imag
+        self.spec_mags = spec_mags
+        self.spec_phase = spec_phase
+        return stft_inputs, real, imag, spec_mags, spec_phase
+
+    def masking(self, mask_real, mask_imag=None):
+        if self.post_process_mode == "mag_mapping":
+            out_real = mask_real * self.real
+            out_imag = mask_real * self.imag
+        elif self.post_process_mode == "complex_mapping":
+            out_real = mask_real * self.real
+            out_imag = mask_imag * self.imag
+        elif self.post_process_mode == "mapping":
+            out_real = mask_real
+            out_imag = mask_imag
+        else:
+            NotImplementedError
+
+        out_real = out_real.squeeze(1)
+        out_imag = out_imag.squeeze(1)
+        out_spec = torch.stack([out_real, out_imag], dim=-1).contiguous()
+        return out_spec
+
+    def refsig_process(self, indatas):
+        if self.loss_mode == "freq":
+            out, _, _, _, _ = self.pre_stft(indatas)
+
+        elif self.loss_mode == "time":
+            out = indatas
+        return out
+
+    def reconstruction(self, stft_outputs, sig_len=None):
+        if not isinstance(stft_outputs, torch.Tensor):
+            stft_outputs = torch.from_numpy(stft_outputs).type(
+                torch.FloatTensor)
+
+        estimated_audio = torch.istft(stft_outputs,
+                                      n_fft=self.fft_len,
+                                      hop_length=self.win_inc,
+                                      win_length=self.win_len,
+                                      window=self.window,
+                                      center=True,
+                                      length=sig_len)
+        return estimated_audio
