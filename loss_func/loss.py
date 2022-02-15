@@ -1,13 +1,13 @@
 '''
 Author: your name
 Date: 2022-02-12 11:12:24
-LastEditTime: 2022-02-14 23:26:13
+LastEditTime: 2022-02-15 23:06:27
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /CRUSE/loss_func/loss.py
 '''
 import torch
-import numpy as np
+# import numpy as np
 
 
 class loss_func:
