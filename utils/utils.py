@@ -1,15 +1,17 @@
 '''
 Author: your name
 Date: 2022-02-12 16:16:12
-LastEditTime: 2022-02-16 00:33:57
+LastEditTime: 2022-02-17 00:09:03
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /CRUSE/utils/utils.py
 '''
 
 # from ntpath import join
-from grpc import ssl_server_certificate_configuration
+
+from pathlib import Path
 import numpy as np
+from sklearn.linear_model import LogisticRegressionCV
 # from scipy.fft import fft
 import torch
 # import matplotlib.pyplot as plt
@@ -18,6 +20,7 @@ import csv
 import glob
 import librosa as lib
 import statistics as stats
+import soundfile as sf
 
 EPS = np.finfo(float).eps
 
@@ -205,11 +208,24 @@ def cal_rt60(y):
     return rt60raw
 
 
-def postfiltering(indata, mask, tao=0.02):
+def postfiltering(mask, indata=None, tao=0.02):
     iam_sin = mask * np.sin(np.pi * mask / 2)
     iam_pf = (1 + tao) * mask / (1 + tao * mask**2 / (iam_sin**2))
 
-    return indata * iam_pf
+    return iam_pf
+
+
+def envelope_postfiltering(unproc, mask, tao=0.02):
+    """
+    perceptually-motivated 
+    Note: only for irm, iam cannot work
+    """
+    g_hat_b_w = mask * np.sin(np.pi * 0.5 * mask)
+    e0 = mask * unproc
+    e1 = g_hat_b_w * unproc
+    tmp = e0 / (e1 + np.finfo(float).eps)
+    g = np.sqrt((1 + tao) * tmp / (1 + tao * tmp**2))
+    return g * g_hat_b_w
 
 
 class PreProcess:
@@ -300,3 +316,102 @@ class PreProcess:
                                       center=True,
                                       length=sig_len)
         return estimated_audio
+
+
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    import librosa.display
+
+    wav_path_dir = "/Users/audio_source/GaGNet/First_DNS_no_reverb/"
+    clean_wav_folder_name = "no_reverb_clean"
+    mix_wav_folder_name = "no_reverb_mix"
+
+    mix_wav_path_name = os.path.join(wav_path_dir, mix_wav_folder_name)
+    mix_dataset_path = Path(mix_wav_path_name).expanduser().absolute()
+    mix_all_lists = lib.util.find_files(mix_dataset_path.as_posix(),
+                                        ext=['wav'],
+                                        limit=1)
+    # getting clean signale location
+    mix_name = os.path.basename(mix_all_lists[0])
+    mix_name_split = mix_name.split('_')
+    clean_name = 'clean_' + mix_name_split[-2] + '_' + mix_name_split[-1]
+    clean_wav_path_name = os.path.join(wav_path_dir, clean_wav_folder_name,
+                                       clean_name)
+
+    mix_sig, _ = lib.load(mix_all_lists[0], sr=16000)
+    clean_sig, _ = lib.load(clean_wav_path_name, sr=16000)
+    noise_sig = mix_sig - clean_sig
+
+    mix_sig_fd = lib.stft(mix_sig, n_fft=256, hop_length=160, win_length=256)
+    mix_sig_mag_fd, mix_sig_phase_fd = lib.magphase(mix_sig_fd)
+    clean_sig_fd = lib.stft(clean_sig,
+                            n_fft=256,
+                            hop_length=160,
+                            win_length=256)
+    clean_sig_mag_fd, clean_sig_phase_fd = lib.magphase(clean_sig_fd)
+
+    noise_sig_fd = lib.stft(noise_sig,
+                            n_fft=256,
+                            hop_length=160,
+                            win_length=256)
+    noise_sig_mag_fd, noise_sig_phase_fd = lib.magphase(noise_sig_fd)
+
+    iam = clean_sig_mag_fd / mix_sig_mag_fd
+    irm = clean_sig_mag_fd / (clean_sig_mag_fd + noise_sig_mag_fd)
+    iam_filter_sig = iam * mix_sig_fd
+    iam_filter_sig = lib.istft(iam_filter_sig,
+                               hop_length=160,
+                               win_length=256,
+                               length=len(mix_sig))
+    ks_filter_sig = postfiltering(mask=iam) * mix_sig_fd
+    ks_filter_sig = lib.istft(ks_filter_sig,
+                              hop_length=160,
+                              win_length=256,
+                              length=len(mix_sig))
+    g = envelope_postfiltering(unproc=mix_sig_mag_fd, mask=irm)
+    amazon_filter_sig = g * mix_sig_fd
+    amazon_filter_sig = lib.istft(amazon_filter_sig,
+                                  hop_length=160,
+                                  win_length=256,
+                                  length=len(mix_sig))
+
+    sf.write('/Users/audio_source/result/iam_out.wav',
+             iam_filter_sig,
+             samplerate=16000)
+    sf.write('/Users/audio_source/result/ks_filter_sig_out.wav',
+             ks_filter_sig,
+             samplerate=16000)
+    sf.write('/Users/audio_source/result/amazon_filter_sig.wav',
+             amazon_filter_sig,
+             samplerate=16000)
+
+    plt.figure(1)
+
+    librosa.display.specshow(lib.amplitude_to_db(clean_sig_fd, ref=np.max),
+                             fmax=8000,
+                             y_axis='linear',
+                             x_axis='time')
+    plt.title('clean signal')
+    plt.colorbar(format='%+2.0f dB')
+    plt.tight_layout()
+    # plt.show()
+
+    plt.figure(2)
+
+    librosa.display.specshow(lib.amplitude_to_db(mix_sig_fd, ref=np.max),
+                             fmax=8000,
+                             y_axis='linear',
+                             x_axis='time')
+    plt.title('mix signal')
+    plt.colorbar(format='%+2.0f dB')
+    plt.tight_layout()
+    plt.show()
+
+    indata = np.linspace(0, 1, 1001)
+    beta = 0.02
+    y = np.sqrt((1 + beta) * indata / (1 + beta * indata**2))
+    y = indata * np.sin(np.pi * 0.5 * indata)
+    plt.figure()
+    plt.plot(indata, y, color='r')
+    plt.show()
+    print('sc')
