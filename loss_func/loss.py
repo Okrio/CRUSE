@@ -1,9 +1,9 @@
 '''
-Author: your name
+Author: Okrio
 Date: 2022-02-12 11:12:24
-LastEditTime: 2022-02-15 23:06:27
+LastEditTime: 2022-02-24 23:12:47
 LastEditors: Please set LastEditors
-Description: In User Settings Edit
+Description: loss function
 FilePath: /CRUSE/loss_func/loss.py
 '''
 import torch
