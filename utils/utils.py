@@ -1,7 +1,7 @@
 '''
 Author: your name
 Date: 2022-02-12 16:16:12
-LastEditTime: 2022-02-17 00:09:03
+LastEditTime: 2022-02-24 22:59:14
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /CRUSE/utils/utils.py
@@ -11,7 +11,7 @@ FilePath: /CRUSE/utils/utils.py
 
 from pathlib import Path
 import numpy as np
-from sklearn.linear_model import LogisticRegressionCV
+# from sklearn.linear_model import LogisticRegressionCV
 # from scipy.fft import fft
 import torch
 # import matplotlib.pyplot as plt
