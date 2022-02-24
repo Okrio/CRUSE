@@ -1,8 +1,8 @@
 '''
 Author: Okrio
 Date: 2022-02-12 11:12:24
-LastEditTime: 2022-02-24 23:12:47
-LastEditors: Please set LastEditors
+LastEditTime: 2022-02-24 23:14:50
+LastEditors: Please set Okrio
 Description: loss function
 FilePath: /CRUSE/loss_func/loss.py
 '''
