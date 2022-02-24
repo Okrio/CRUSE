@@ -1,8 +1,8 @@
 '''
-Author: your name
+Author: Okrio
 Date: 2022-02-15 22:21:55
 LastEditTime: 2022-02-15 23:06:20
-LastEditors: Please set LastEditors
+LastEditors: Okrio
 Description: In User Settings Edit
 FilePath: /CRUSE/dataset/preprocess_dataset.py
 '''
