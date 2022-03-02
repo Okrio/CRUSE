@@ -1,12 +1,14 @@
 '''
 Author: Okrio
 Date: 2022-02-12 11:12:24
-LastEditTime: 2022-02-24 23:14:50
-LastEditors: Please set Okrio
+LastEditTime: 2022-03-02 22:45:41
+LastEditors: Please set LastEditors
 Description: loss function
 FilePath: /CRUSE/loss_func/loss.py
 '''
+
 import torch
+# from utils.utils import active_rms
 # import numpy as np
 
 
@@ -82,7 +84,7 @@ def cn_rmse(ref, est, unproc=None, eps=1e-8):
         )
 
 
-def c_rmse(ref, est, unproc=None, eps=1e-8):
+def c_rmse(ref, est, unproc=None, norm=False, eps=1e-8):
     if ref.shape != est.shape:
         raise RuntimeError(
             f"Dimension mismatch when calculate c_mse, {ref.shape} vs {est.shape}"
@@ -115,7 +117,7 @@ def c_rmse(ref, est, unproc=None, eps=1e-8):
     return loss
 
 
-def wo_male(ref, est, unproc, eps=1e-8):
+def wo_male(ref, est, unproc, norm=False, eps=1e-8):
     if ref.shape != est.shape:
         raise RuntimeError(
             f"Dimension mismatch when calculate wo-male, {ref.shape} vs {est.shape}"
@@ -146,6 +148,7 @@ def wo_male(ref, est, unproc, eps=1e-8):
 
 
 if __name__ == "__main__":
+    # inda = np.linspa
     x = torch.ones((2, 1, 3, 4))
     y = torch.sum(x, dim=0)
     print(f"y shape:{y.shape}")
