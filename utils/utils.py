@@ -1,7 +1,7 @@
 '''
 Author: your name
 Date: 2022-02-12 16:16:12
-LastEditTime: 2022-02-24 22:59:14
+LastEditTime: 2022-03-04 00:05:05
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /CRUSE/utils/utils.py
@@ -21,6 +21,13 @@ import glob
 import librosa as lib
 import statistics as stats
 import soundfile as sf
+import scipy.signal as scs
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "test")))
+print(os.path.abspath(os.path.join(os.getcwd(), "test")))
+
+from test_loss import plot_mesh
 
 EPS = np.finfo(float).eps
 
@@ -54,6 +61,43 @@ def active_rms(audio, sr=16000, energy_thresh=-120):
     else:
         audio_rms = EPS
     return audio_rms
+
+
+def vad_simplify(audio, win_len=256, hop_len=160, fs=16000, target_level=-25):
+    """
+    refer to "weighted speech distortion losses for neural network-based real-time speech enhancement"
+    """
+    audio = normalize(audio, target_level)
+    # audio_len = len(audio)
+    # n_frames = (audio_len - win_len + hop_len) // hop_len
+    # audio_clips = torch.tensor(audio).unfold(0, win_len, hop_len)
+    # print(f"audio_clips:{audio_clips.shape}")
+    freq_res = fs * 1. / win_len
+    f300Hz_point = int(np.floor(300 / freq_res))
+    f5000Hz_point = int(np.ceil(5000 / freq_res))
+
+    stft_audio = lib.stft(audio,
+                          n_fft=win_len,
+                          hop_length=hop_len,
+                          win_length=win_len,
+                          center=True)
+    stft_mag, _ = lib.magphase(stft_audio)  # F * T
+    stft_mag_log = 10 * np.log10(stft_mag**2 + 1e-12)
+    plot_mesh(stft_mag_log, 'stft_mag_log')
+    # plt.show()
+    stft_300_5000_sum = np.sum(stft_mag_log[f300Hz_point:f5000Hz_point, :],
+                               axis=0)
+    stft_300_5000_sum_smooth = scs.lfilter([0.1], [1, -0.5, -0.2, -0.2],
+                                           stft_300_5000_sum)
+    plt.figure()
+    plt.plot(stft_300_5000_sum)
+    plt.plot(stft_300_5000_sum_smooth)
+    # ax = plt.axes()
+    # ax.set_alpha(0.4)
+    plt.legend(['stft_sum', 'stft_sum_smooth'])
+    plt.show()
+
+    return
 
 
 def activitydetector(audio, fs=16000, energy_thresh=0.13, target_level=-25):
@@ -331,7 +375,7 @@ if __name__ == "__main__":
     mix_all_lists = lib.util.find_files(mix_dataset_path.as_posix(),
                                         ext=['wav'],
                                         limit=1)
-    # getting clean signale location
+    # getting clean signle location
     mix_name = os.path.basename(mix_all_lists[0])
     mix_name_split = mix_name.split('_')
     clean_name = 'clean_' + mix_name_split[-2] + '_' + mix_name_split[-1]
@@ -341,6 +385,9 @@ if __name__ == "__main__":
     mix_sig, _ = lib.load(mix_all_lists[0], sr=16000)
     clean_sig, _ = lib.load(clean_wav_path_name, sr=16000)
     noise_sig = mix_sig - clean_sig
+
+    # test vad_simplify
+    vad_simplify(mix_sig, win_len=512, hop_len=128)
 
     mix_sig_fd = lib.stft(mix_sig, n_fft=256, hop_length=160, win_length=256)
     mix_sig_mag_fd, mix_sig_phase_fd = lib.magphase(mix_sig_fd)

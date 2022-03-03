@@ -1,13 +1,14 @@
 '''
 Author: Okrio
 Date: 2022-02-12 11:12:24
-LastEditTime: 2022-03-02 22:45:41
+LastEditTime: 2022-03-04 00:09:27
 LastEditors: Please set LastEditors
 Description: loss function
 FilePath: /CRUSE/loss_func/loss.py
 '''
 
 import torch
+from utils.utils import activity_detector_amp
 # from utils.utils import active_rms
 # import numpy as np
 
@@ -145,6 +146,21 @@ def wo_male(ref, est, unproc, norm=False, eps=1e-8):
         torch.log10(mag_est + 1) - torch.log10(mag_ref + 1))
     loss = torch.sum(loss) / (B * T * F * 1.0)
     return loss
+
+
+def sdnr(ref_clean,
+         est_g,
+         ref_noise,
+         snr=None,
+         beta=None,
+         alpha=None,
+         norm=False,
+         eps=1e-8):
+    B = ref_noise.shape[0]
+    F = ref_noise.shape[1]
+    T = ref_noise.shape[2]
+
+    L_noise = torch.norm(ref_noise * est_g, p=2)**2
 
 
 if __name__ == "__main__":
