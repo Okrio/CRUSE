@@ -1,7 +1,7 @@
 '''
 Author: your name
 Date: 2022-02-12 16:16:12
-LastEditTime: 2022-03-04 00:05:05
+LastEditTime: 2022-03-28 22:53:14
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /CRUSE/utils/utils.py
@@ -148,6 +148,34 @@ def activity_detector_amp(audio, fs=16000, thre=9):
     rnnoise vad method
 
     """
+    window_size = 20  # ms
+    window_sample = int(fs * window_size / 1000)
+    start = 0
+    data_len = len(audio)
+    audio = audio * 32768
+    frameshift = window_sample // 2
+    nframe = (data_len - window_sample + frameshift) // frameshift
+    Energy = np.zeros(data_len)
+    vad_seq = np.zeros_like(Energy)
+    vad1 = 0
+    vad_cnt = 0
+    for i in range(0, nframe):
+        tmp = np.array(audio[start:i + window_sample])
+        E_val = np.sum(tmp * tmp)
+        if E_val > 1e9:
+            vad_cnt = 0
+        elif E_val > 1e8:
+            vad_cnt = vad_cnt - 5
+        elif E_val > 1e7:
+            vad_cnt = vad_cnt + 1
+        else:
+            vad_cnt += 2
+        # todo ...
+    pass
+
+
+def activity_detector_tf_frame(audio, fs=16000, thr=9):
+
     pass
 
 
@@ -252,6 +280,28 @@ def cal_rt60(y):
     return rt60raw
 
 
+def statist_rt60(data_path, savefile_path):
+    rir_filename = lib.util.find_files(data_path, ext=["wav"])
+    rir_filename_list = []
+    rt60_filename_list = []
+    total_clips = len(rir_filename)
+
+    for rirpath in rir_filename:
+        rir_filename_list.append(rirpath)
+        rt60 = cal_rt60(rirpath)
+        rt60_filename_list.append(np.median(rt60))
+
+    target_file_name = 'Unit_test_{}_logs'.format(os.path.basename(data_path))
+    dir_name = os.path.join(savefile_path, target_file_name)
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+    if not os.path.exists(dir_name):
+        dir_name = os.path.join(savefile_path, target_file_name)
+        os.makedirs(dir_name)
+    write_log_file(dir_name, 'Unit_test_rt60_results.csv',
+                   [rir_filename_list, rt60_filename_list])
+
+
 def postfiltering(mask, indata=None, tao=0.02):
     iam_sin = mask * np.sin(np.pi * mask / 2)
     iam_pf = (1 + tao) * mask / (1 + tao * mask**2 / (iam_sin**2))
@@ -320,6 +370,9 @@ class PreProcess:
         self.spec_mags = spec_mags
         self.spec_phase = spec_phase
         return stft_inputs, real, imag, spec_mags, spec_phase
+
+    def log_transform(self):
+        self.spec_mags = torch.log(self.spec_mags)
 
     def masking(self, mask_real, mask_imag=None):
         if self.post_process_mode == "mag_mapping":
