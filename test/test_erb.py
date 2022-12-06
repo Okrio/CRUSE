@@ -1,4 +1,3 @@
-from re import L
 import numpy as np
 import torch
 from torch import Tensor
@@ -147,13 +146,13 @@ def apply_band_gain(out, band_e, erb_fb):
 
 def post_filter(gain):
     beta = 0.02
-    eps = 1e-12
+    eps = 1e-12 * torch.ones_like(gain)
     pi = torch.pi
     g_sin = torch.zeros_like(gain)
     out_gain = torch.zeros_like(gain)
-    
-    for i in range(gain):
-
+    g_sin = torch.maximum(gain * torch.sin(pi / 2. * gain), eps)
+    out_gain = (1.0 + beta) * gain / (1.0 + beta * torch.pow(gain / g_sin, 2))
+    return out_gain
 
 
 def test_erb_fb():
