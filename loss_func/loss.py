@@ -1,14 +1,14 @@
 '''
 Author: Okrio
 Date: 2022-02-12 11:12:24
-LastEditTime: 2022-03-04 00:09:27
+LastEditTime: 2022-03-04 23:51:43
 LastEditors: Please set LastEditors
 Description: loss function
 FilePath: /CRUSE/loss_func/loss.py
 '''
 
 import torch
-from utils.utils import activity_detector_amp
+from utils.utils import activity_detector_amp, activity_detector_tf_frame
 # from utils.utils import active_rms
 # import numpy as np
 
@@ -152,15 +152,27 @@ def sdnr(ref_clean,
          est_g,
          ref_noise,
          snr=None,
-         beta=None,
+         beta=20,
          alpha=None,
          norm=False,
          eps=1e-8):
-    B = ref_noise.shape[0]
-    F = ref_noise.shape[1]
-    T = ref_noise.shape[2]
+    """
+         ref_clean: B*C*T*F
+         est_g: B*C*T*F
+         ref_noise: BCTF
+    """
+    B, C, T, F = torch.size(ref_clean)
 
-    L_noise = torch.norm(ref_noise * est_g, p=2)**2
+    L_noise = torch.mean(torch.norm(ref_noise * est_g, p=2, dim=(1, 2))**2)
+
+    vad = activity_detector_tf_frame(ref_clean)
+    S_sa = vad * ref_clean
+    L_speech = torch.mean(torch.norm(S_sa - est_g * S_sa, p=2, dim=(1, 2))**2)
+    snr_tmp = 10**(snr / 10)
+    beta_tmp = 10**(beta / 10)
+    alpha = snr_tmp / (snr_tmp + beta_tmp)
+    loss_out = alpha * L_speech + (1 - alpha) * L_noise
+    return loss_out
 
 
 if __name__ == "__main__":
