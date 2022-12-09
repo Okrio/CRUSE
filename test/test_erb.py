@@ -189,6 +189,9 @@ def test_erb_fb_use():
 
 
 def test_apply_band_gain():
+    """
+    test erb band gain for data
+    """
     # import random
     sr = 24000
     fft_size = 192
