@@ -1,7 +1,7 @@
 '''
 Author: Okrio
 Date: 2022-02-15 22:21:55
-LastEditTime: 2022-02-24 23:14:42
+LastEditTime: 2022-03-28 22:53:13
 LastEditors: Please set LastEditors
 Description: Okrio
 FilePath: /CRUSE/dataset/preprocess_dataset.py
@@ -168,4 +168,8 @@ if __name__ == "__main__":
             f"\t Selected files: {accumulated_time / 3600} hrs, {len(output_wav_path_list)} files. "
         ))
     print(f"\t is_clipped_wav: {len(is_clipped_wav_list)}")
+    print(f"\t is_low_activity:{len(is_low_activity_list)}")
+    print(f"\t is_too_short: {len(is_too_short_list)}")
+    print(f"\t is_too_largeRT60: {len(is_large_rt60_list)}")
+
     print("succeed")

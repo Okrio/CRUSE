@@ -23,6 +23,8 @@ import statistics as stats
 import soundfile as sf
 import scipy.signal as scs
 import sys
+from typing import List
+import colorful
 
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "test")))
 print(os.path.abspath(os.path.join(os.getcwd(), "test")))
@@ -37,6 +39,44 @@ def normalize(audio, target_level=-25):
     scalar = 10**(target_level / 20) / (rms + 1e-8)
     audio = audio * scalar
     return audio
+
+
+def as_windowed(x: torch.Tensor, win_len, hop_len=1, dim=1):
+    """
+    input: B, T
+    output: B, T//win_len, win_len
+    """
+    shape: List[int] = list(x.shape)
+    stride: List[int] = list(x.stride())
+    shape[dim] = int((shape[dim] - win_len + hop_len) // hop_len)
+    shape.insert(dim + 1, win_len)
+    stride.insert(dim + 1, stride[dim])
+    stride[dim] = stride[dim] * hop_len
+    y = x.as_strided(shape, stride)
+    return y
+
+
+def torch_active_rms(audio: torch.Tensor,
+                     sr=16000,
+                     thr=-120,
+                     frame_length=100):
+    window_samples = int((sr * frame_length) // 1000)
+    EPS = torch.finfo(torch.float32).eps
+
+    y = as_windowed(audio, window_samples, window_samples)  # stride input data
+    audio_seg_rms = 20 * torch.log10(
+        torch.mean(y**2, dim=-1, keepdim=True) + EPS)
+    thr_mat = torch.zeros_like(y)
+    y1 = torch.where(audio_seg_rms > thr, y, thr_mat)
+    y1_flatten = torch.flatten(y1,
+                               start_dim=1)  # flatten data in batch dimenstion
+    y1_zeros_count = (y1_flatten == 0.).sum(
+        dim=-1)  # statistic zero numbers for each batch
+    y1_flatten_sum = torch.sum(y1_flatten**2, dim=-1)  # calcuate square sum
+    y1_flatten_mean = (y1_flatten_sum / (y1_flatten.shape[-1] - y1_zeros_count)
+                       )**0.5  # mean data without zero-val part
+    out = y1_flatten_mean.unsqueeze(dim=1)
+    return out
 
 
 def active_rms(audio, sr=16000, energy_thresh=-120):
@@ -415,7 +455,16 @@ class PreProcess:
         return estimated_audio
 
 
+def test_torch_activate_rms():
+    x = torch.randn(3, 64)
+    y = torch_active_rms(audio=x, frame_length=1, thr=0)
+    colortool = colorful
+    colortool.use_style("solarized")
+    print(colortool.red(f'sc: {y.shape}'))
+
+
 if __name__ == "__main__":
+    test_torch_activate_rms()
     import matplotlib.pyplot as plt
     import librosa.display
 
