@@ -23,13 +23,13 @@ def erb_fb(sr, fft_size, nb_bands, min_nb_freqs):
     freq_width = sr / fft_size
     erb_low = freq2erb(torch.Tensor([0.]))
     erb_high = freq2erb(torch.Tensor([nyq_freq]))
-    erb = torch.zeros([nb_bands])
+    erb = torch.zeros([nb_bands], dtype=torch.int16)
     step = (erb_high - erb_low) / nb_bands
     prev_freq = 0
     freq_over = 0
     for i in range(nb_bands):
         f = erb2freq(erb_low + (i + 1) * step)
-        fb = torch.round(f / freq_width)
+        fb = int(torch.round(f / freq_width))
         nb_freqs = fb - prev_freq - freq_over
         if nb_freqs < min_nb_freqs:
             freq_over = min_nb_freqs - nb_freqs
@@ -119,11 +119,13 @@ def band_unit_norm(xs, state, alpha):
 
 def apply_interp_band_gain(out, band_e, erb_fb):
     bcsum = 0
+    out_out = torch.zeros_like(out)
     for i, (band_size, b) in enumerate(zip(erb_fb, band_e)):
         for j in range(band_size):
             idx = bcsum + j
-            out[idx] *= b
+            out_out[idx] = out[idx] * b
         bcsum += band_size
+    return out_out
 
 
 def interp_band_gain(out, band_e, erb_fb):
@@ -137,11 +139,13 @@ def interp_band_gain(out, band_e, erb_fb):
 
 def apply_band_gain(out, band_e, erb_fb):
     bcsum = 0
+    out_out = torch.zeros_like(out)
     for i, (band_size, b) in enumerate(zip(erb_fb, band_e)):
-        for j in range(band_size):
+        for j in range(0, band_size):
             idx = bcsum + j
-            out[idx] *= b  # NOTE
+            out_out[idx] = out[idx] * b  # NOTE
         bcsum += band_size
+    return out_out
 
 
 def post_filter(gain):
@@ -184,7 +188,35 @@ def test_erb_fb_use():
     print('sc')
 
 
+def test_apply_band_gain():
+    # import random
+    sr = 24000
+    fft_size = 192
+    n_freqs = fft_size // 2 + 1
+    nb_bands = 24
+    min_nb_freqs = 1
+    erb = erb_fb(sr, fft_size, nb_bands, min_nb_freqs)
+    # band_e = torch.randint(0, 10, erb.shape)
+    mask = torch.ones(nb_bands)
+    mask[3] = 0.3
+    mask[nb_bands - 1] = 0.5
+    input_real = torch.rand(n_freqs)
+    input_imag = torch.rand(n_freqs)
+    input = torch.complex(input_real, input_imag)
+    out_out = apply_band_gain(input, mask, erb)
+
+    out_out1 = torch.zeros_like(out_out)
+    cumsum = 0
+    for erb_idx, erb_w in enumerate(erb):
+        for i in range(cumsum, cumsum + erb_w):
+            out_out1[i] = input[i] * mask[erb_idx]
+        cumsum += erb_w
+
+    print('sc')
+
+
 if __name__ == "__main__":
+    test_apply_band_gain()
     # test_erb_fb()
     # test_erb_fb_use()
     a = [1, 4, 5]
