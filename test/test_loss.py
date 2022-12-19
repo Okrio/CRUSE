@@ -7,10 +7,16 @@ Description: refer to "weighted speech distortion lossed for neural network base
 FilePath: /CRUSE/test/test_loss.py
 '''
 import os
+
 from matplotlib import pyplot as plt
 import numpy as np
 import librosa as lib
 import soundfile as sf
+import torch
+import torch.nn.functional as F
+from typing import Dict, Final, Iterable, List
+from torch import Tensor, nn
+from torch.autograd import Function
 
 
 def plot_mesh(img, title="", save_home=""):
@@ -109,6 +115,132 @@ def speech_distortion_test():
     sf.write('./enhance_noise_t.wav', enhance_noise_t, samplerate=16000)
 
     print('sc')
+
+
+def wg(S: Tensor, X: Tensor, eps: float = 1e-10):
+    N = X - S
+    SS = S.abs().square()
+    NN = N.abs().square()
+    return (SS / (SS + NN + eps)).clamp(0, 1)
+
+
+def irm(S: Tensor, X: Tensor, eps: float = 1e-10):
+    N = X - S
+    SS_mag = S.abs()
+    NN_mag = N.abs()
+    return (SS_mag / (SS_mag + NN_mag + eps)).clamp(0, 1)
+
+
+def iam(S: Tensor, X: Tensor, eps: float = 1e-10):
+    SS_mag = S.abs()
+    XX_mag = X.abs()
+    return (SS_mag / (XX_mag + eps)).clamp(0, 1)
+
+
+class Stft(nn.Module):
+    def __init__(self,
+                 n_fft: int,
+                 hop: int = None,
+                 window: Tensor = None) -> None:
+        super().__init__()
+        self.n_fft = n_fft
+        self.hop = hop or n_fft // 4
+        if window is not None:
+            assert window.shape[0] == n_fft
+        else:
+            window = torch.hann_window(self.n_fft)
+        self.w: torch.Tensor
+        self.register_buffer("w", window)
+
+    def forward(self, input: Tensor):
+        t = input.shape[-1]
+        sh = input.shape[:-1]
+        out = torch.stft(input.reshape(-1, t),
+                         n_fft=self.n_fft,
+                         hop_length=self.hop,
+                         window=self.w,
+                         normalized=True,
+                         return_complex=True)
+        out = out.view(*sh, *out.shape[-2:])
+        return out
+
+
+class Istft(nn.Module):
+    def __init__(self, n_fft_inv: int, hop_inv: int, window_inv: Tensor):
+        super().__init__()
+        self.n_fft_inv = n_fft_inv
+        self.hop_inv = hop_inv
+        # self.window_inv = window_inv
+        self.w_inv: torch.Tensor
+        self.register_buffer("w_inv", window_inv)
+
+    def forward(self, input: Tensor):
+        t, f = input.shape[-2:]
+        sh = input.shape[:-2]
+
+        out = torch.istft(F.pad(
+            input.reshape(-1, t, f).transpose(1, 2), (0, 1)),
+                          n_fft=self.n_fft_inv,
+                          hop_length=self.hop_inv,
+                          window=self.w_inv,
+                          normalized=True)
+        if input.ndim > 2:
+            out = out.view(*sh, out.shape[-1])
+
+        return out
+
+
+class MultResSpecLoss(nn.Module):
+    gamma: Final[float]
+    f: Final[float]
+    f_complex: Final[List[float]]
+
+    def __init__(self, n_ffts, gamma, factor, f_complex=None):
+        super().__init__()
+        self.gamma = gamma
+        self.f = factor
+        self.stfts = nn.ModuleDict(
+            {str(n_fft): Stft(n_fft)
+             for n_fft in n_ffts})
+        if f_complex is None or f_complex == 0:
+            self.f_complex = None
+        elif isinstance(f_complex, Iterable):
+            self.f_complex = list(f_complex)
+        else:
+            self.f_complex = [f_complex] * len(self.stfts)
+
+    def forward(self, input: Tensor, target: Tensor):
+        loss = torch.zeros()
+        for i, stft in enumerate(self.stfts.values()):
+            Y = stft(input)
+            S = stft(target)
+            Y_abs = Y.abs()
+            S_abs = S.abs()
+            if self.gamma != 1:
+                Y_abs = Y_abs.clamp_min(1e-12).pow(self.gamma)
+                S_abs = S_abs.clamp_min(1e-12).pow(self.gamma)
+            loss += F.mse_loss(Y_abs, S_abs) * self.f
+            if self.f_complex is not None:
+                if self.gamma != 1:
+                    Y = Y_abs * torch.exp(1j * angle.apply(Y))
+                    S = S_abs * torch.exp(1j * angle.apply(S))
+                loss += F.mse_loss(torch.view_as_real(Y),
+                                   torch.view_as_real(S)) * self.f_complex[i]
+        return loss
+
+
+class angle(Function):
+    @staticmethod
+    def forward(ctx, x: Tensor):
+        ctx.save_for_backend(x)
+        return torch.atan2(x.imag, x.real)
+
+    @staticmethod
+    def backward(ctx, grad: Tensor):
+        (x, ) = ctx.saved_tensors
+        grad_inv = grad / (x.real.square() + x.imag.square()).clamp_min_(1e-10)
+        return torch.view_as_complex(
+            torch.stack((-x.imag * grad_inv, x.real * grad_inv), dim=-1))
 
 
 if __name__ == "__main__":
