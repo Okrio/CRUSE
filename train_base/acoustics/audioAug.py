@@ -146,6 +146,85 @@ REGISTERED_SecFilter_freq = {
     "notch": [40, 4000]
 }
 
+def compositeSecFilt(indata,filter_num=3, sr=16000):
+    filter_list = [
+        "high_shelf", "high_pass", "low_shelf", "low_pass", "peaking_eq",
+        "notch"
+    ]
+    assert filter_num < len(filter_list), " filter_num is error"
+    filter_idx = list(np.linspace(0, 5, 6, dtype=np.int16))
+    sel_filter = random.sample(filter_idx, filter_num)
+    indata_tmp = indata
+    for i in range(0,filter_num):
+        filter_type = filter_list[sel_filter[i]]
+        center_freq = ss.loguniform.rvs(REGISTERED_SecFilter_freq[filter_type][0], REGISTERED_SecFilter_freq[filter_type][1], 1)
+        gain_db = np.random.uniform(-15,15, 1)
+        q_factor = np.random.uniform(0.5, 1.5, 1)
+        selFilt_coef = REGISTERED_SecFilter[filter_type](center_freq,gain_db,q_factor,sr)
+        indata_tmp = torchaudio.functional.lfilter(indata_tmp, selFilt_coef[1,:], selFilt_coef[0,:])
+    return indata_tmp
+
+
+def hp_filter(indata,filte_num=1, sr=16000):
+    """
+    fixed frequency high pass filter
+    """
+    center_freq = 150.
+    q_factor = np.random.uniform(0.5,1.5,1)
+    filt_coef = high_pass(center_freq,0,q_factor,sr)
+    out = indata
+    for i in range(0, filte_num):
+        out = torchaudio.functional.lfilter(out, filt_coef[1,:],filt_coef[0,:])
+    return out
+
+def airAbsorption(sig, sr=16000):
+    center_freq = [125,250,500,1000,2000,4000,8000, 16000,24000]
+    air_absorption = [0.1,0.2,0.5,1.1,2.7,9.4,29.0,91.5,289.0]
+    air_absorption_table = Tensor([x * 1e-3 for x in air_absorption])
+    distance_low = 1.0
+    distance_high = 20.0
+    d = torch.FloatTensor(1).uniform_(distance_low,distance_high)
+    atten_val = torch.exp(-d * air_absorption_table)
+    atten_val_db = 20 * torch.log10(atten_val)
+    att_interp_db = interp_atten(att_interp_db, 161)
+    att_interp = 10 ** (att_interp_db / 20)
+    sig_stft = torch.stft(sig, window=torch.hann_window(320), n_fft=320, win_length=320, hop_length=160, return_complex=True).squeeze()
+    att_interp_tile = torch.tile(att_interp, (sig_stft.shape[-1], 1)).transpose(1,0)
+    masked = sig_stft * att_interp_tile
+    masked = masked.unsqueeze()
+    rc = torch.istft(masked, window = torch.hann_window(320), n_fft=320, win_length=320,hop_length=320, length=sig.shape[-1])
+    return rc
+
+def interp_atten(atten_vals=None, n_freq=None, center_freq=None, sr=16000):
+    center_freq = [125,250,500, 1000, 2000, 4000, 8000, 16000, 24000]
+    sr=16000
+    atten_vals1 = [atten_vals[0].tolist()] + atten_vals.tolist() + [atten_vals[-1].tolist()]
+    freqs = torch.linspace(0, sr/2, n_freq)
+    atten_vals_interp = torch.zeros(n_freq)
+    center_freq = [0] + center_freq + [sr/2]
+    i = 0
+    center_freq_win = as_windowed(Tensor([center_freq]), 2,1).squeeze()
+    atten_vals_win = as_windowed(Tensor([atten_vals1]), 2,1).squeeze()
+    gf = center_freq_win.tolist()
+    for k,(c,a) in enumerate(zip(center_freq_win.tolist(), atten_vals_win.tolist())):
+        c0, c1 = c[0], c[1]
+        a0, a1 = a[0], a[1]
+        while i <n_freq and freqs[i] <=c1:
+            x = (freqs[i] - c1) / (c0 -c1)
+            atten_vals_interp[i] = a0 *x + a1 * (1.-x)
+            i+=1
+    return atten_vals_interp
+
+def as_windowed(x:torch.Tensor, win_len, hop_len=1, dim=1):
+    shape:List[int] = list(x.shape)
+    stride:List[int] = list(x.stride())
+    shape[dim] = int((shape[1] - win_len + hop_len) // hop_len)
+    shape.insert(dim+1, win_len)
+    stride.insert(dim+1, stride[dim])
+    stride[dim] = stride[dim] * hop_len
+    y=x.as_strided(shape, stride)
+    return y
+
 if __name__ == "__main__":
     filter_num = 3
     filter_list = [
