@@ -126,6 +126,44 @@ class unet1(nn.Modules):
 
         return out
 
+class unet_2(nn.Module):
+    def __init__(self,in_feat=161, ch=(1,8,16,32,64), stride=(1,2), rnn_groups=4):
+        super(unet_2,self).__init__()
+        self.laynum = len(ch) -1
+        hidden_size = (in_feat//2**self.laynum*ch[-1])
+        self.ker_x = 2
+        self.stride = stride
+        self.padding = [self.ker_x -stride[0], 3 - stride[1]]
+        for i in range(len(ch)-1):
+            setattr(self,"conv{}".format(i+1), nn.Conv2d(ch[i], ch[i+1],(self.ker_x,3), self.stride, self.padding))
+            tmp = len(ch) - 1 -i
+            setattr(self,"conv{}".format(tmp), nn.Conv2d(ch[tmp-1], ch[i+1],(1,3), self.stride))
+            setattr(self,"bn{}".format(i+1), nn.BatchNorm2d(ch[i+1]))
+            setattr(self,"bn{}_t".format(i+1), nn.BatchNorm2d(ch[tmp-1]))
+            setattr(self,"skip_connect_{}".format(i+1), nn.Conv2d(ch[i+1], ch[i+1],(1,3),bias=False))
+        self.gru = GGRU(groups=rnn_groups)
+        self.elu = nn.ReLU()
+        self.fc = nn.Linear(in_feat, in_feat)
+    def forward(self,x):
+        out =x
+        e1_tmp = self.elu(self.bn1(self.conv1(out)[...,-self.padding[0],:]))
+        e2 = self.elu(self.bn2(self.conv2(e1_tmp)[...,-self.padding[0],:]))
+        e3 = self.elu(self.bn2(self.conv2(e2)[...,-self.padding[0],:]))
+        e4 = self.elu(self.bn2(self.conv2(e3)[...,-self.padding[0],:]))
+        skip1 = self.skip_connect_1(e1_tmp)
+        skip2 = self.skip_connect_1(e2)
+        ski3 = self.skip_connect_1(e3)
+        skip4 = self.skip_connect_1(e4)
+        b,c,t,f = e3.size()
+        out_gru = self.gru(e4)
+        out2 = out_gru
+        out = out2 + skip4
+        d4_1 = self.elu(self.bn4_t(self.conv4_t(out)[...,:-1]))+skip3
+        d3_1 = self.elu(self.bn3_t(self.conv3_t(out)[...,:-1]))+skip2
+        d2_1 = self.elu(self.bn2_t(self.conv2_t(out)[...,:-1]))+skip1
+        d1_1 = nn.Sigmoid()(self.conv1_t(out)[...,:-1])
+        return d1_1
+
 
 if __name__ == "__main__":
     x = torch.randn((2, 1, 10, 161))
